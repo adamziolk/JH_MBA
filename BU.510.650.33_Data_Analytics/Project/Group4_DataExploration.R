@@ -6,14 +6,20 @@ data = as.data.frame(fread("marketing_campaign.csv"))
 # 2240 records
 # 29 Columns
 
+# Remove missing data
+sum(is.na(data))
+data = data[complete.cases(data), ]
+sum(is.na(data))
+
 summary(data) # Provides Quantilies and stats about each variable
 sum(duplicated(data$ID)) # Each record is a unique customer
 
 # What is the average household income of individuals purchasing wine via the company’s website versus directly in stores? 
 web_customers = data[data$NumWebPurchases > 0 & data$NumStorePurchases == 0, ] # 5 Records
-store_customers =  data[data$NumWebPurchases == 0 & data$NumStorePurchases > 0, ] # 39 Records
-  # Insufficient data to answer this question
-
+store_customers =  data[data$NumWebPurchases == 0 & data$NumStorePurchases > 0, ] # 38 Records
+  # Insufficient data to answer this question - Small sample size, so take this with a grain of salt.
+mean(web_customers$Income) # 32278.75
+mean(store_customers$Income) # 36873.66
 
 
 # Is there a correlation between the amount spent on wine versus other products? 
@@ -38,8 +44,8 @@ summary(lm_discounts)
 
 
 # How many people visit the company’s website and how many people purchase through the website? 
-web_visitors = data[data$NumWebVisitsMonth > 0, ] # 2229 visitors
-web_purchasers = data[data$NumWebPurchases > 0, ] # 2191 purchasers
+web_visitors = data[data$NumWebVisitsMonth > 0, ] # 2206 visitors
+web_purchasers = data[data$NumWebPurchases > 0, ] # 2168 purchasers
 
 
 
@@ -52,11 +58,6 @@ lm_acceptance = lm(data$AcceptedCmp1 ~
 summary(lm_acceptance)
 # P Values show they are indicative
 
-
-
-
-# Instead of the last 2 years, what would change if the range of time increased to five years? 
-  # I don't know what this is referring to
 
 
 ### Feature Engineering ###
@@ -88,14 +89,13 @@ env_data$Dt_Customer = NULL
 
 
 # Can we predict Wine Sales based on Family Environment
-
 lm_wine_env = lm(env_data$MntWines ~
                    env_data$Education+
                    env_data$Kidhome+
                    env_data$Income+
                    env_data$Teenhome+
                    env_data$Age+
-                   data$Marital_Status)
+                   env_data$Marital_Status)
 summary(lm_wine_env)
 # Marital Status and age are not predictive
 # Education, income, and children are predictive
@@ -115,7 +115,12 @@ comp_test <- comp_data[ind==2,]
 
 logreg_comp = glm(Complain~., family=binomial, data=comp_train)
 comp_probs = predict(logreg_comp, newdata=comp_test, type="response")
+
+preds_original = rep(0, nrow(comp_test))
+preds_original[comp_probs > 0.5] = 1
+mean(preds_original==comp_test$Complain) # 99% match, but that is just the base rate - This model will not generalize
 plot(comp_probs)
+
 # Probabilities are very low due to imbalanced training data
 
 # Balance the data
@@ -126,6 +131,23 @@ comp_probs2 = predict(logreg_comp2, newdata=comp_test, type="response")
 plot(comp_probs2) # Much Better
 
 preds = rep(0, nrow(comp_test))
-preds[comp_probs2 < 0.5] = 1
-mean(preds==comp_test$Complain) # We can predict who will complain about 36% of the time
+preds[comp_probs2 > 0.5] = 1
+mean(preds==comp_test$Complain) # We can predict who will complain about 63% of the time
+
+# Compare with KNN Results
+require(fastDummies)
+comp_dummies = dummy_cols(comp_data)
+comp_dummies$Education = NULL
+comp_dummies$Marital_Status = NULL
+dummy_train <- comp_dummies[ind==1,]
+dummy_test <- comp_dummies[ind==2,]
+
+
+require(class)
+knn3 = knn(
+  dummy_train[, !names(dummy_train) %in% c("Complain")],
+  dummy_test[, !names(dummy_test) %in% c("Complain")] ,
+  dummy_train$Complain, 3)
+mean(knn3==dummy_test$Complain) # We can predict who will complain 98% of the time
+
 
